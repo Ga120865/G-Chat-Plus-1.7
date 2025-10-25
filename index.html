@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>G-Chat Plus 1.7 (fix)</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{--bg:#0f1116;--panel:#1a1d23;--text:#eaeaea;--muted:#999;--accent:#fff;--sidebar:#16181f;}
+*{box-sizing:border-box}
+body{margin:0;display:flex;height:100vh;background:var(--bg);color:var(--text);font-family:"Inter",system-ui,Segoe UI,Roboto,sans-serif}
+#sidebar{width:250px;background:var(--sidebar);border-right:1px solid #222;padding:16px;display:flex;flex-direction:column}
+#sidebar h2{font-size:18px;margin:12px 0;text-align:center}
+#new-chat{background:#1f222a;color:#fff;border:none;border-radius:10px;padding:10px;margin-bottom:14px;cursor:pointer;font-weight:600}
+#new-chat:hover{background:#292d36}
+#chat-list{flex:1;overflow:auto}
+.chat-item{background:#1d1f25;padding:8px 10px;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.chat-item:hover{background:#2a2d33}
+.chat-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.delete{color:var(--muted);cursor:pointer;margin-left:8px}
+#main{flex:1;display:flex;flex-direction:column;align-items:center}
+header{width:100%;max-width:820px;padding:16px 20px;background:#121419;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center}
+#logo-container{display:flex;align-items:center;gap:10px}
+#logo-container svg{height:46px;fill:white}
+header h1{margin:0;font-size:22px;color:var(--accent)}
+#chat{flex:1;width:100%;max-width:820px;overflow:auto;background:var(--panel);padding:20px 28px}
+.msg{margin:12px 0;white-space:pre-wrap;line-height:1.6}
+.user{color:var(--accent);font-weight:500}
+.bot{color:var(--text)}
+.typing{display:inline-block;width:20px}
+.typing::after{content:'';display:inline-block;animation:dots 1.4s steps(4,end) infinite}
+@keyframes dots{0%,20%{content:''}40%{content:'.'}60%{content:'..'}80%,100%{content:'...'}}
+#input-area{display:flex;align-items:center;width:100%;max-width:820px;background:#14161c;border:1px solid #2a2d33;border-radius:10px;margin:16px 0 20px;padding:6px 10px}
+#input{flex:1;background:transparent;border:none;color:var(--text);font-size:15px;padding:10px;outline:none}
+button{border:none;background:none;color:var(--muted);cursor:pointer}
+button:hover{color:var(--accent)}
+#signin{text-align:center;margin:40px 0}
+</style>
+</head>
+<body>
+<!-- Sidebar -->
+<aside id="sidebar">
+  <button id="new-chat">Nuevo chat</button>
+  <h2>Chats guardados</h2>
+  <div id="chat-list"></div>
+</aside>
+
+<!-- Main -->
+<main id="main">
+  <header>
+    <div id="logo-container">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500"><g transform="translate(0,1000) scale(0.3,-0.3)" fill="white"><path d="M1121 3035 c-125 -39 -234 -168 -256 -302 l-7 -43 -180 0 -181 0 6 -51 c18 -150 132 -276 288 -316 l69 -17 0 -180 0 -179 53 7 c155 21 284 143 318 304 l11 52 180 0 181 0 -7 53 c-21 155 -143 284 -303 318 l-53 11 0 179 0 179 -37 -1 c-21 0 -58 -7 -82 -14z"/></g></svg>
+      <h1>G-Chat Plus 1.7</h1>
+    </div>
+  </header>
+
+  <!-- Login -->
+  <section id="signin">
+    <h3>Inicia sesión con Google para usar el chat</h3>
+    <div id="g_id_onload"
+      data-client_id="371360871467-jvjpj8u8tcpte8pit7k5p9hbisss7o5p.apps.googleusercontent.com"
+      data-context="signin"
+      data-ux_mode="popup"
+      data-callback="handleCredentialResponse"></div>
+    <div class="g_id_signin" data-type="standard"></div>
+  </section>
+
+  <!-- Chat -->
+  <section id="chat" style="display:none;"></section>
+
+  <!-- Input -->
+  <div id="input-area" style="display:none;">
+    <input id="input" placeholder="Escribe un mensaje o 'buscar tema...'" />
+    <button id="send"><span class="material-symbols-outlined">send</span></button>
+  </div>
+</main>
+
+<script>
+/* ======== Respuestas + normalización ======== */
+const respuestas = {
+  "hola": ["Hola, qué gusto verte.", "Hola, ¿cómo estás?", "Hola, bienvenido de nuevo."],
+  "buenas": ["Buenas, ¿cómo va tu día?", "Hola, ¿en qué puedo ayudarte hoy?"],
+  "adiós": ["Hasta luego.", "Nos vemos pronto."],
+  "gracias": ["De nada.", "Para eso estoy.", "Un placer ayudarte."],
+  "cómo estás": ["Estoy bien, gracias por preguntar.", "Todo en orden, ¿y tú?"],
+  "ok": ["Entendido.", "Perfecto."],
+  "buenos días": ["Buenos días, dime en qué puedo ayudarte"],
+  "buenas noches": ["Buenas noches, dime en qué puedo ayudarte"],
+  "qué haces": ["Estoy aquí, lista para ayudarte.", "Esperando tus preguntas."],
+  "quién eres": ["Soy G-Chat Plus 1.1, tu asistente virtual."]
+};
+function normalizarTexto(texto) {
+  return texto
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/xq/g, "porque")
+    .replace(/\bk\b/g, "que")
+    .replace(/ola/g, "hola")
+    .replace(/grasias/g, "gracias")
+    .replace(/adios+/g, "adiós")
+    .replace(/asta luego/g, "hasta luego")
+    .replace(/buenaz/g, "buenas")
+    .replace(/noches+/g, "noches")
+    .replace(/dias+/g, "días")
+    .replace(/ke/g, "que")
+    .replace(/que haces/g, "qué haces")
+    .replace(/quien eres/g, "quién eres")
+    .replace(/como estas/g, "cómo estás")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/* ======== Estado ======== */
+let user = null;
+let chats = {};
+let currentChat = null;
+
+/* ======== Utilidades UI ======== */
+function appendMessage(sender, text) {
+  const chatEl = document.getElementById("chat");
+  const msg = document.createElement("div");
+  msg.className = "msg " + sender;
+  msg.textContent = text;
+  chatEl.appendChild(msg);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+function appendTyping() {
+  const chatEl = document.getElementById("chat");
+  const t = document.createElement("div");
+  t.className = "msg bot typing";
+  chatEl.appendChild(t);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return t;
+}
+function removeTyping(t) { if (t && t.parentNode) t.parentNode.removeChild(t); }
+function limpiarTexto(t) { return t.replace(/\[[^\]]*\]/g,"").replace(/http\S+/g,"").replace(/\s{2,}/g," ").trim(); }
+
+/* ======== Persistencia ======== */
+function saveChats(){ localStorage.setItem("gchat_chats", JSON.stringify(chats)); }
+function loadChats(){ const s = localStorage.getItem("gchat_chats"); if (s) chats = JSON.parse(s); renderList(); }
+function renderList(){
+  const list = document.getElementById("chat-list");
+  list.innerHTML = "";
+  Object.keys(chats).forEach(id => {
+    const item = document.createElement("div");
+    item.className = "chat-item";
+    const span = document.createElement("span");
+    span.textContent = chats[id].title || "Chat sin título";
+    const del = document.createElement("span");
+    del.className = "delete"; del.textContent = "✕";
+    del.onclick = (e)=>{ e.stopPropagation(); delete chats[id]; saveChats(); renderList(); if(currentChat===id){ document.getElementById("chat").innerHTML=""; currentChat=null; } };
+    item.onclick = ()=> loadChat(id);
+    item.append(span, del);
+    list.appendChild(item);
+  });
+}
+
+/* ======== Chat ======== */
+function newChat() {
+  const id = Date.now().toString();
+  chats[id] = { title: "Nuevo chat", messages: [] };
+  currentChat = id; saveChats(); renderList();
+  document.getElementById("chat").innerHTML = "";
+  appendMessage("bot", "Nuevo chat iniciado.");
+}
+function loadChat(id) {
+  currentChat = id;
+  const chatEl = document.getElementById("chat");
+  chatEl.innerHTML = "";
+  chats[id].messages.forEach(m => appendMessage(m.sender, m.text));
+}
+
+/* ======== Búsqueda ======== */
+async function webSearch(query) {
+  const typing = appendTyping();
+  try {
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1`;
+    const res = await fetch(url);
+    const data = await res.json();
+    let text = data.AbstractText
+      || (data.RelatedTopics && data.RelatedTopics.length ? data.RelatedTopics.map(t=>t.Text).filter(Boolean)[0] : "")
+      || `No encontré información directa. Consulta:
+Google: https://www.google.com/search?q=${encodeURIComponent(query)}
+Bing: https://www.bing.com/search?q=${encodeURIComponent(query)}
+Brave: https://search.brave.com/search?q=${encodeURIComponent(query)}`;
+    removeTyping(typing);
+    text = limpiarTexto(text);
+    appendMessage("bot", text);
+    chats[currentChat].messages.push({ sender: "bot", text }); saveChats();
+  } catch {
+    removeTyping(typing);
+    appendMessage("bot", "Error al buscar información.");
+  }
+}
+
+/* ======== Entrada ======== */
+async function processInput() {
+  const input = document.getElementById("input");
+  const raw = input.value.trim(); if (!raw) return;
+  appendMessage("user", raw);
+  chats[currentChat].messages.push({ sender: "user", text: raw }); saveChats();
+  input.value = "";
+  const lower = normalizarTexto(raw);
+
+  if (lower.startsWith("buscar ")) {
+    const q = raw.replace(/^buscar /i, "");
+    await webSearch(q);
+    return;
+  }
+
+  // Respuestas rápidas
+  for (const clave in respuestas) {
+    if (lower.includes(clave)) {
+      const opciones = respuestas[clave];
+      const reply = opciones[Math.floor(Math.random() * opciones.length)];
+      const t = appendTyping();
+      setTimeout(()=>{ removeTyping(t); appendMessage("bot", reply); chats[currentChat].messages.push({ sender:"bot", text: reply }); saveChats(); }, 900);
+      return;
+    }
+  }
+
+  const t = appendTyping();
+  setTimeout(()=>{ removeTyping(t);
+    const r = "No entiendo muy bien eso, pero puedo intentar ayudarte si lo reformulas.";
+    appendMessage("bot", r);
+    chats[currentChat].messages.push({ sender:"bot", text: r }); saveChats();
+  }, 1100);
+}
+
+/* ======== Login con Google (FIX) ======== */
+window.handleCredentialResponse = (response) => {
+  const data = parseJwt(response.credential);
+  user = data;
+  document.getElementById("signin").style.display = "none";
+  document.getElementById("chat").style.display = "block";
+  document.getElementById("input-area").style.display = "flex";
+  appendMessage("bot", `Bienvenido, ${data.name}`);
+  if (!currentChat) newChat();
+};
+function parseJwt(token){
+  const base64Url = token.split('.')[1];
+  const base64 = base64Url.replace(/-/g,'+').replace(/_/g,'/');
+  const jsonPayload = decodeURIComponent(
+    atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+  );
+  return JSON.parse(jsonPayload);
+}
+
+/* ======== Init ======== */
+document.addEventListener("DOMContentLoaded", ()=>{
+  document.getElementById("send").onclick = processInput;
+  document.getElementById("input").addEventListener("keydown", e=>{ if(e.key==="Enter") processInput(); });
+  document.getElementById("new-chat").onclick = newChat;
+
+  if (location.protocol === "file:") {
+    alert("Abre este archivo con un servidor (Live Server o http://localhost). Google bloquea file://");
+  }
+  loadChats();
+});
+</script>
+</body>
+</html>
