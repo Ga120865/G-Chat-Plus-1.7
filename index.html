@@ -10,7 +10,14 @@
 :root{--bg:#0f1116;--panel:#1a1d23;--text:#eaeaea;--muted:#999;--accent:#fff;--sidebar:#16181f;}
 *{box-sizing:border-box}
 body{margin:0;display:flex;height:100vh;background:var(--bg);color:var(--text);font-family:"Inter",system-ui,Segoe UI,Roboto,sans-serif}
-#sidebar{width:250px;background:var(--sidebar);border-right:1px solid #222;padding:16px;display:flex;flex-direction:column}
+
+/* ===== Sidebar (original) ===== */
+#sidebar{
+  width:250px;background:var(--sidebar);border-right:1px solid #222;
+  padding:16px;display:flex;flex-direction:column;
+  position:relative; /* <-- Para posicionar el toggle */
+  transition:width .25s ease;
+}
 #sidebar h2{font-size:18px;margin:12px 0;text-align:center}
 #new-chat{background:#1f222a;color:#fff;border:none;border-radius:10px;padding:10px;margin-bottom:14px;cursor:pointer;font-weight:600}
 #new-chat:hover{background:#292d36}
@@ -19,6 +26,27 @@ body{margin:0;display:flex;height:100vh;background:var(--bg);color:var(--text);f
 .chat-item:hover{background:#2a2d33}
 .chat-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .delete{color:var(--muted);cursor:pointer;margin-left:8px}
+
+/* ===== Toggle bar para contraer/expandir ===== */
+#sidebar-toggle{
+  position:absolute;top:50%;right:-8px;transform:translateY(-50%);
+  width:16px;height:64px;border:1px solid #222;border-left:none;
+  background:#2a2d33;border-radius:0 8px 8px 0;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:#cfcfcf;font-weight:700;user-select:none;
+  z-index:5;
+}
+#sidebar-toggle:focus{outline:2px solid #5a9cff;outline-offset:2px}
+#sidebar-toggle::after{content:"‹";font-size:16px;}
+
+/* Estado colapsado */
+#sidebar.collapsed{width:16px;}
+/* Oculta todo el contenido del panel menos el toggle cuando está colapsado */
+#sidebar.collapsed > :not(#sidebar-toggle){display:none;}
+/* Cambia la flecha cuando está colapsado */
+#sidebar.collapsed #sidebar-toggle::after{content:"›";}
+
+/* ===== Main (original) ===== */
 #main{flex:1;display:flex;flex-direction:column;align-items:center}
 header{width:100%;max-width:820px;padding:16px 20px;background:#121419;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center}
 #logo-container{display:flex;align-items:center;gap:10px}
@@ -44,6 +72,9 @@ button:hover{color:var(--accent)}
   <button id="new-chat">Nuevo chat</button>
   <h2>Chats guardados</h2>
   <div id="chat-list"></div>
+
+  <!-- === Barra para contraer/expandir (NUEVO) === -->
+  <button id="sidebar-toggle" aria-label="Contraer/expandir panel" title="Contraer/expandir panel" type="button"></button>
 </aside>
 
 <!-- Main -->
@@ -228,7 +259,7 @@ async function processInput() {
   }, 1100);
 }
 
-/* ======== Login con Google (FIX) ======== */
+/* ======== Login con Google ======== */
 window.handleCredentialResponse = (response) => {
   const data = parseJwt(response.credential);
   user = data;
@@ -247,7 +278,7 @@ function parseJwt(token){
   return JSON.parse(jsonPayload);
 }
 
-/* ======== Init ======== */
+/* ======== Init + Toggle Sidebar ======== */
 document.addEventListener("DOMContentLoaded", ()=>{
   document.getElementById("send").onclick = processInput;
   document.getElementById("input").addEventListener("keydown", e=>{ if(e.key==="Enter") processInput(); });
@@ -257,6 +288,19 @@ document.addEventListener("DOMContentLoaded", ()=>{
     alert("Abre este archivo con un servidor (Live Server o http://localhost). Google bloquea file://");
   }
   loadChats();
+
+  // Estado persistente del panel
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.getElementById('sidebar-toggle');
+  const collapsed = localStorage.getItem('gchat_sidebar_collapsed') === '1';
+  if (collapsed) sidebar.classList.add('collapsed');
+
+  function toggleSidebar(){
+    sidebar.classList.toggle('collapsed');
+    localStorage.setItem('gchat_sidebar_collapsed', sidebar.classList.contains('collapsed') ? '1' : '0');
+  }
+  toggle.addEventListener('click', toggleSidebar);
+  toggle.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); toggleSidebar(); } });
 });
 </script>
 </body>
